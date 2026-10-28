@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.1",
+  version: "1.2.2",
   requiredVersion: "0.0.1",
   description: "红果沙雕/搞笑漫剧：热门、最新、播放记录。需要自建 hgsd 服务。",
   author: "xufeng",
@@ -312,7 +312,9 @@ async function loadDetail(link) {
       type: "url",
       mediaType: "tv",
       title: e.no === s.lastEpisode ? "▶ 第" + e.no + "集（上次看到）" : "第" + e.no + "集",
-      episode: e.no,
+      // no `episode` field: rex points its play button at the highest-numbered
+      // episode, which would start unwatched series at the latest episode
+      episodeName: "第" + e.no + "集",
       duration: e.duration,
       coverUrl: s.cover,
       videoUrl: e.url,

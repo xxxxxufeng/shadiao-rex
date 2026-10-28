@@ -113,7 +113,9 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   assert.equal(d.episodeItems[1].title, "▶ 第2集（上次看到）");
   assert.equal(d.episodeItems[0].title, "第1集");
   assert.equal(d.episodeItems[2].videoUrl, `${SERVER}/play/7699740362100706328/3.mp4?q=720p&t=${TOKEN}`);
-  assert.equal(d.episodeItems[2].episode, 3);
+  // rex defaults the play button to the highest `episode`; episodes carry no number field
+  assert.equal(d.episodeItems[2].episode, undefined);
+  assert.equal(d.episodeItems[2].episodeName, "第3集");
   assert.equal(d.episodeItems[2].playerType, "app");
   assert.ok(Array.isArray(d.relatedItems) && d.relatedItems[0].link.startsWith("hg:"));
   assert.equal(d.recommendations, undefined);
