@@ -1,12 +1,13 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.3",
+  version: "1.2.4",
   requiredVersion: "0.0.1",
   description: "热门、最新、分类、搜索、播放记录，看完不再推荐，不含 AI 剧",
   author: "xufeng",
   site: "https://github.com/xxxxxufeng/shadiao-rex",
   icon: "https://raw.githubusercontent.com/xxxxxufeng/shadiao-rex/main/icon.png",
+  iconurl: "https://raw.githubusercontent.com/xxxxxufeng/shadiao-rex/main/icon.png", // rex reads this key
   detailCacheDuration: 60,
   globalParams: [
     {
