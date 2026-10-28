@@ -32,6 +32,9 @@ global.Widget = {
           related: [show("7527216662647426110", "坑爹悍将")],
         },
       };
+      if (url === SERVER + "/api/series/7000000000000000009") return {
+        data: { ...show("7000000000000000009", "没看过", { episodes: 609 }), episodeList: [{ no: 1, title: "", duration: 60, url: "u1" }], related: [] },
+      };
       throw new Error("unmocked url: " + url);
     },
   },
@@ -83,6 +86,8 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   assert.equal(it.releaseDate, "2025-07-15");
   assert.deepEqual(it.genreItems, [{ id: "搞笑", title: "搞笑" }, { id: "古代", title: "古代" }]);
   assert.equal(it.cover, undefined);
+  // rex reads `episode` as the episode to play, so list items must not carry the total count
+  assert.equal(it.episode, undefined);
   assert.equal(it.stills, undefined);
 
   await loadNew({ ...base });
@@ -102,6 +107,9 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   assert.deepEqual(calls.at(-1).params, { t: TOKEN, q: "720p" });
   assert.equal(d.link, "hg:7699740362100706328");
   assert.equal(d.episodeItems.length, 3);
+  assert.equal(d.episode, 2, "play button resumes at the last watched episode");
+  const fresh = await loadDetail("hg:7000000000000000009");
+  assert.equal(fresh.episode, 1, "unwatched series starts at episode 1, not the latest");
   assert.equal(d.episodeItems[1].title, "▶ 第2集（上次看到）");
   assert.equal(d.episodeItems[0].title, "第1集");
   assert.equal(d.episodeItems[2].videoUrl, `${SERVER}/play/7699740362100706328/3.mp4?q=720p&t=${TOKEN}`);

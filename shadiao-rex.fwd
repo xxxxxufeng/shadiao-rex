@@ -7,7 +7,7 @@
       "title": "沙雕漫剧",
       "description": "红果沙雕/搞笑漫剧：热门、最新、分类、播放记录。需要自建 hgsd 服务。",
       "requiredVersion": "0.0.1",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "xufeng",
       "url": "https://raw.githubusercontent.com/xxxxxufeng/shadiao-rex/main/widgets/hongguo-shadiao.js"
     }

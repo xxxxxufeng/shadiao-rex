@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.0",
+  version: "1.2.1",
   requiredVersion: "0.0.1",
   description: "红果沙雕/搞笑漫剧：热门、最新、播放记录。需要自建 hgsd 服务。",
   author: "xufeng",
@@ -239,7 +239,6 @@ function hgItem(s, title) {
     releaseDate: hgDate(s.created),
     genreItems: tags.map((t) => ({ id: t, title: t })),
     genreTitle: tags.join(" / "),
-    episode: s.episodes,
   };
 }
 
@@ -306,6 +305,8 @@ async function loadDetail(link) {
     const conf = hgConfig();
     const s = await hgGet(conf, "/api/series/" + m[1]);
     const item = hgItem(s);
+    // rex starts playback at `episode`: resume where the user left off, else from 1
+    item.episode = s.lastEpisode || 1;
     item.episodeItems = (s.episodeList || []).map((e) => ({
       id: item.id + ":" + e.no,
       type: "url",
