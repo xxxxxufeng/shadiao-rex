@@ -1,0 +1,10 @@
+services:
+  hgsd:
+    image: ghcr.io/xxxxxufeng/shadiao-rex:latest
+    # build: .   # or build locally
+    container_name: hgsd
+    restart: unless-stopped
+    ports:
+      - "8686:8686"
+    volumes:
+      - ./data:/data   # config.json (token), history.json, pool.json, device profiles

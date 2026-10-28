@@ -1,0 +1,5 @@
+.superpowers/
+bin/
+server/testdata/*.mp4
+server/testdata/*.key
+.DS_Store
