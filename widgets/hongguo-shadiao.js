@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.7",
+  version: "1.2.8",
   requiredVersion: "0.0.1",
   description: "热门、最新、分类、搜索、播放记录，看完不再推荐，不含 AI 剧",
   author: "xufeng",
@@ -335,7 +335,6 @@ async function loadDetail(link, params) {
       episodeName: "第" + e.no + "集",
       duration: e.duration,
       coverUrl: s.cover,
-      videoUrl: e.url,
       playerType: "app",
     }));
     item.relatedItems = (s.related || []).map((r) => hgItem(r));
@@ -393,7 +392,6 @@ async function hgEpisodeDetail(conf, sid, no, link) {
       link,
       episodeName: "第" + no + "集",
       duration: e.duration,
-      videoUrl: e.url,
       playerType: "app",
     });
   } catch (error) {

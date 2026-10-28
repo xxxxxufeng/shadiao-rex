@@ -112,7 +112,9 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   assert.equal(fresh.episode, 1, "unwatched series starts at episode 1, not the latest");
   assert.equal(d.episodeItems[1].title, "▶ 第2集（上次看到）");
   assert.equal(d.episodeItems[0].title, "第1集");
-  assert.equal(d.episodeItems[2].videoUrl, `${SERVER}/play/7699740362100706328/3.mp4?q=720p&t=${TOKEN}`);
+  // no direct videoUrl: rex must resolve playback through loadResource so the
+  // resource source is this module (a bare URL can't be resumed after relaunch)
+  assert.equal(d.episodeItems[2].videoUrl, undefined);
   // rex defaults the play button to the highest `episode`; episodes carry no number field
   assert.equal(d.episodeItems[2].episode, undefined);
   assert.equal(d.episodeItems[2].episodeName, "第3集");
@@ -156,7 +158,7 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   assert.equal(ep.link, EP3);
   assert.equal(ep.id, "hg:7699740362100706328:3");
   assert.equal(ep.type, "url");
-  assert.equal(ep.videoUrl, `${SERVER}/play/7699740362100706328/3.mp4?q=720p&t=${TOKEN}`);
+  assert.equal(ep.videoUrl, undefined);
   assert.equal(ep.title, "荒岛 第3集");
   assert.equal(ep.episodeName, "第3集");
   assert.equal(ep.coverUrl, "https://img/7699740362100706328.heic");
