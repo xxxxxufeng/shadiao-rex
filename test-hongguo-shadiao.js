@@ -44,6 +44,13 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   // metadata
   assert.equal(WidgetMetadata.id, "xufeng.hongguo.shadiao");
   assert.equal(WidgetMetadata.title, "沙雕漫剧");
+
+  // the subscription index must point at this widget and carry the same version
+  const fwd = JSON.parse(fs.readFileSync("./shadiao-rex.fwd", "utf8"));
+  const entry = fwd.widgets.find((w) => w.id === WidgetMetadata.id);
+  assert.ok(entry, "widget listed in shadiao-rex.fwd");
+  assert.equal(entry.version, WidgetMetadata.version);
+  assert.equal(entry.url, "https://raw.githubusercontent.com/xxxxxufeng/shadiao-rex/main/widgets/hongguo-shadiao.js");
   const gp = WidgetMetadata.globalParams.map((p) => p.name);
   assert.deepEqual(gp, ["server", "token", "quality"]);
   const cats = ["funny", "xianxia", "ancient", "urban", "horror", "system"];
