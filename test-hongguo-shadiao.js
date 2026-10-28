@@ -68,6 +68,9 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
     assert.ok(m.params.some((p) => p.type === "page"));
   });
   assert.ok(!WidgetMetadata.modules.some((m) => m.functionName === "searchList"));
+  // no list caching: a home-page shelf must run the module on launch so rex has it
+  // loaded before "continue watching" is tapped
+  for (const m of WidgetMetadata.modules) assert.equal(m.cacheDuration, 0, m.id);
   assert.equal(WidgetMetadata.search.functionName, "search");
   assert.ok(WidgetMetadata.search.params.some((p) => p.type === "page"));
   assert.ok(!WidgetMetadata.modules.some((m) => m.type === "search"));

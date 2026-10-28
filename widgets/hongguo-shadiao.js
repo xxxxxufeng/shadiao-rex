@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.8",
+  version: "1.2.9",
   requiredVersion: "0.0.1",
   description: "热门、最新、分类、搜索、播放记录，看完不再推荐，不含 AI 剧",
   author: "xufeng",
@@ -35,21 +35,21 @@ WidgetMetadata = {
       id: "hot",
       title: "沙雕热门",
       functionName: "loadHot",
-      cacheDuration: 1800,
+      cacheDuration: 0,
       params: [{ name: "page", title: "页码", type: "page" }],
     },
     {
       id: "new",
       title: "沙雕最新",
       functionName: "loadNew",
-      cacheDuration: 1800,
+      cacheDuration: 0,
       params: [{ name: "page", title: "页码", type: "page" }],
     },
     {
       id: "cat_funny",
       title: "沙雕·搞笑",
       functionName: "loadCategory",
-      cacheDuration: 1800,
+      cacheDuration: 0,
       params: [
         { name: "cat", title: "分类", type: "constant", value: "funny" },
         {
@@ -69,7 +69,7 @@ WidgetMetadata = {
       id: "cat_xianxia",
       title: "沙雕·修仙玄幻",
       functionName: "loadCategory",
-      cacheDuration: 1800,
+      cacheDuration: 0,
       params: [
         { name: "cat", title: "分类", type: "constant", value: "xianxia" },
         {
@@ -89,7 +89,7 @@ WidgetMetadata = {
       id: "cat_ancient",
       title: "沙雕·古代宫廷",
       functionName: "loadCategory",
-      cacheDuration: 1800,
+      cacheDuration: 0,
       params: [
         { name: "cat", title: "分类", type: "constant", value: "ancient" },
         {
@@ -109,7 +109,7 @@ WidgetMetadata = {
       id: "cat_urban",
       title: "沙雕·都市日常",
       functionName: "loadCategory",
-      cacheDuration: 1800,
+      cacheDuration: 0,
       params: [
         { name: "cat", title: "分类", type: "constant", value: "urban" },
         {
@@ -129,7 +129,7 @@ WidgetMetadata = {
       id: "cat_horror",
       title: "沙雕·恐怖怪谈",
       functionName: "loadCategory",
-      cacheDuration: 1800,
+      cacheDuration: 0,
       params: [
         { name: "cat", title: "分类", type: "constant", value: "horror" },
         {
@@ -149,7 +149,7 @@ WidgetMetadata = {
       id: "cat_system",
       title: "沙雕·系统升级",
       functionName: "loadCategory",
-      cacheDuration: 1800,
+      cacheDuration: 0,
       params: [
         { name: "cat", title: "分类", type: "constant", value: "system" },
         {
