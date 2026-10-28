@@ -145,9 +145,22 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   }
   assert.equal(calls.length, n0);
 
+  // continue-watching resumes an episode via loadDetail(episode link)
+  const ep = await loadDetail("hg:7699740362100706328:3");
+  assert.equal(calls.at(-1).url, SERVER + "/api/series/7699740362100706328");
+  assert.equal(ep.link, "hg:7699740362100706328:3");
+  assert.equal(ep.type, "url");
+  assert.equal(ep.videoUrl, `${SERVER}/play/7699740362100706328/3.mp4?q=720p&t=${TOKEN}`);
+  assert.equal(ep.title, "荒岛 第3集");
+  assert.equal(ep.episodeName, "第3集");
+  assert.equal(ep.coverUrl, "https://img/7699740362100706328.heic");
+  assert.equal(ep.episode, undefined);
+  // an episode number the series doesn't have
+  assert.equal(await loadDetail("hg:7699740362100706328:99"), null);
+
   // detail rejects foreign links with zero requests
   const before = calls.length;
-  for (const bad of ["550", "rou:123", "https://evil.test/hg:1", "", "hg:", "hg:abc", "hg:123:4", null, undefined]) {
+  for (const bad of ["550", "rou:123", "https://evil.test/hg:1", "", "hg:", "hg:abc", "hg:123:4", "hg:7699740362100706328:x", null, undefined]) {
     assert.equal(await loadDetail(bad), null, String(bad));
   }
   assert.equal(calls.length, before);

@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.5",
+  version: "1.2.6",
   requiredVersion: "0.0.1",
   description: "热门、最新、分类、搜索、播放记录，看完不再推荐，不含 AI 剧",
   author: "xufeng",
@@ -310,7 +310,10 @@ async function search(params = {}) {
 }
 
 async function loadDetail(link) {
-  const m = HG_LINK_RE.exec(typeof link === "string" ? link : "");
+  const ln = typeof link === "string" ? link : "";
+  const em = HG_EP_LINK_RE.exec(ln);
+  if (em) return hgEpisodeDetail(em[1], Number(em[2]), ln);
+  const m = HG_LINK_RE.exec(ln);
   if (!m) return null;
   try {
     const conf = hgConfig();
@@ -341,6 +344,29 @@ async function loadDetail(link) {
 }
 
 const HG_EP_LINK_RE = /^hg:(\d{6,25}):(\d{1,5})$/;
+
+// hgEpisodeDetail is a single playable episode; rex resumes continue-watching
+// entries by calling loadDetail with the episode's link.
+async function hgEpisodeDetail(sid, no, link) {
+  try {
+    const conf = hgConfig();
+    const s = await hgGet(conf, "/api/series/" + sid);
+    const e = (s.episodeList || []).find((x) => x.no === no);
+    if (!e) return null;
+    const item = hgItem(s, s.title + " 第" + no + "集");
+    return Object.assign(item, {
+      id: link,
+      link,
+      episodeName: "第" + no + "集",
+      duration: e.duration,
+      videoUrl: e.url,
+      playerType: "app",
+    });
+  } catch (error) {
+    console.error(HG_TAG, "episode", link, error.message || error);
+    throw error;
+  }
+}
 const HG_QUALITIES = ["1080p", "720p", "480p"];
 
 // loadResource returns play URLs for this module's episodes only. The link is
