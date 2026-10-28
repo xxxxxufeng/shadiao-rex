@@ -76,7 +76,7 @@ docker logs -f hgsd                    # 查看日志
 | `pool.json` | 沙雕池缓存（删掉会在启动时重建） |
 | `anonymous.json` / `meta.json` | 红果匿名设备档案（删掉会自动重新注册） |
 
-容器以 uid 1000 运行。如果日志提示 `permission denied`，执行 `sudo chown -R 1000 data`。
+容器启动时会自动把 `data/` 的属主改为容器内用户（uid 1000），再以该非 root 用户运行服务。
 
 ### 外网访问（HTTPS 反向代理）
 
