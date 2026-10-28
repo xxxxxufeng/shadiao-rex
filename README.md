@@ -51,6 +51,19 @@ cat data/config.json                   # 查看自动生成的访问口令 token
 docker logs -f hgsd                    # 查看日志
 ```
 
+### 获取访问口令（token）
+
+首次启动时会自动生成一个 64 位的随机口令，保存在 `data/config.json` 的 `token` 字段。任选一种方式查看：
+
+```sh
+grep token data/config.json                 # 在 docker-compose.yml 所在目录执行
+docker exec hgsd cat /data/config.json      # 不在该目录时，直接读容器里的
+```
+
+输出类似 `"token": "4f0c…e9a1"`，引号里那一串就是口令，填到 rex 模块设置的「访问口令」里。
+
+想换口令：改 `data/config.json` 里的 `token`，然后 `docker compose restart`，rex 里同步改掉即可。
+
 首次启动会在后台建「沙雕池」（搜索约 40 个关键词，**需要 5～10 分钟**），日志出现 `pool: refreshed, N shows` 之后，热门/最新/分类才有内容。
 
 ### 配置
@@ -111,7 +124,9 @@ docker compose pull && docker compose up -d
 ## 在 rex 里使用
 
 1. 导入 `widgets/hongguo-shadiao.js`（可用 raw 链接）。
-2. 模块设置里填「服务地址」（如 `http://192.168.1.10:8686` 或你的 `publicBase`）和「访问口令」。
+2. 模块设置里填：
+   - 「服务地址」：局域网用 `http://部署机器的IP:8686`，外网用你的 `publicBase`（如 `https://hg.example.com`）
+   - 「访问口令」：见上文[获取访问口令](#获取访问口令token)
 3. 先打开一次任意列表（详情页靠它记住设置）。
 4. 搜索用 rex 自带的搜索页，选本模块。
 
