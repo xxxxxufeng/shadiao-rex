@@ -144,3 +144,14 @@ func TestPlayRecordUsesFreshEpisodeCount(t *testing.T) {
 		t.Fatalf("stale total used: %+v", h)
 	}
 }
+
+func TestPlayNotCacheable(t *testing.T) {
+	enc, _ := fixture(t)
+	c, _ := cdn(t, enc)
+	e, _ := playEnv(t, c.URL+"/ok")
+	w := e.get(t, "/play/1001/1.mp4", "Range", "bytes=0-99")
+	// decrypted video must not be cached by CDNs/proxies (and plays must reach us to be recorded)
+	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Fatalf("Cache-Control %q", got)
+	}
+}

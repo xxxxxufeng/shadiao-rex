@@ -251,6 +251,7 @@ func (s *server) serveEpisode(w http.ResponseWriter, r *http.Request, k, episode
 	}
 	h := w.Header()
 	h.Set("Content-Type", "video/mp4")
+	h.Set("Cache-Control", "private, no-store")
 	h.Set("Accept-Ranges", "bytes")
 	h.Set("Content-Length", strconv.FormatInt(to-from+1, 10))
 	if partial {
