@@ -58,7 +58,7 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   assert.deepEqual(gp, ["server", "token", "quality"]);
   const cats = ["funny", "xianxia", "ancient", "urban", "horror", "system"];
   assert.deepEqual(WidgetMetadata.modules.map((m) => m.functionName),
-    ["loadHot", "loadNew", ...cats.map(() => "loadCategory"), "loadHistory"]);
+    ["loadHot", "loadNew", ...cats.map(() => "loadCategory"), "loadHistory", "loadResource"]);
   WidgetMetadata.modules.filter((m) => m.functionName === "loadCategory").forEach((m, i) => {
     assert.equal(m.id, "cat_" + cats[i]);
     assert.ok(m.title.startsWith("沙雕·"));
@@ -120,6 +120,30 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   assert.ok(Array.isArray(d.relatedItems) && d.relatedItems[0].link.startsWith("hg:"));
   assert.equal(d.recommendations, undefined);
   assert.equal(d.childItems, undefined);
+
+  // episodes carry a link so rex can resume them later through loadResource
+  assert.equal(d.episodeItems[2].link, "hg:7699740362100706328:3");
+
+  // loadResource: rex's "continue watching" re-resolves the episode through this module
+  const rm = WidgetMetadata.modules.find((m) => m.id === "loadResource");
+  assert.ok(rm && rm.type === "stream" && rm.functionName === "loadResource");
+  let n0 = calls.length;
+  const res = await loadResource({ link: "hg:7699740362100706328:31" });
+  assert.equal(calls.length, n0, "builds play URLs locally, no request");
+  assert.deepEqual(res.map((r) => r.name), ["720P", "1080P", "480P"], "configured quality first");
+  assert.equal(res[0].url, `${SERVER}/play/7699740362100706328/31.mp4?q=720p&t=${TOKEN}`);
+  assert.ok(res.every((r) => r.playerType === "app"));
+  // series-level link + episode param also resolves
+  const res2 = await loadResource({ link: "hg:7699740362100706328", episode: 5 });
+  assert.equal(res2[0].url, `${SERVER}/play/7699740362100706328/5.mp4?q=720p&t=${TOKEN}`);
+  // id is used when there is no link
+  assert.equal((await loadResource({ id: "hg:7699740362100706328:2" })).length, 3);
+  // foreign / malformed inputs: nothing, and no requests
+  for (const bad of [{ id: 550 }, { tmdbId: 550, type: "movie" }, { link: "rou:1:2" }, { link: "https://evil.test/hg:1:2" },
+    { link: "hg:7699740362100706328" }, { link: "hg:abc:1" }, { link: "bad", id: "hg:7699740362100706328:2" }, {}]) {
+    assert.deepEqual(await loadResource(bad), [], JSON.stringify(bad));
+  }
+  assert.equal(calls.length, n0);
 
   // detail rejects foreign links with zero requests
   const before = calls.length;

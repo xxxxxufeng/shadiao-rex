@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.4",
+  version: "1.2.5",
   requiredVersion: "0.0.1",
   description: "热门、最新、分类、搜索、播放记录，看完不再推荐，不含 AI 剧",
   author: "xufeng",
@@ -172,6 +172,15 @@ WidgetMetadata = {
       cacheDuration: 0,
       params: [],
     },
+    {
+      // rex resumes "continue watching" by asking this module for streams
+      id: "loadResource",
+      title: "播放",
+      functionName: "loadResource",
+      type: "stream",
+      cacheDuration: 0,
+      params: [],
+    },
   ],
   search: {
     title: "搜索",
@@ -197,7 +206,7 @@ function hgConfig(params) {
       quality: params.quality || "1080p",
     };
     Widget.storage.set(HG_CONF_KEY, JSON.stringify(conf));
-  } else if (!params) {
+  } else {
     const raw = Widget.storage.get(HG_CONF_KEY);
     if (raw) conf = typeof raw === "string" ? JSON.parse(raw) : raw;
   }
@@ -311,6 +320,7 @@ async function loadDetail(link) {
     item.episode = s.lastEpisode || 1;
     item.episodeItems = (s.episodeList || []).map((e) => ({
       id: item.id + ":" + e.no,
+      link: item.id + ":" + e.no,
       type: "url",
       mediaType: "tv",
       title: e.no === s.lastEpisode ? "▶ 第" + e.no + "集（上次看到）" : "第" + e.no + "集",
@@ -326,6 +336,40 @@ async function loadDetail(link) {
     return item;
   } catch (error) {
     console.error(HG_TAG, "detail", link, error.message || error);
+    throw error;
+  }
+}
+
+const HG_EP_LINK_RE = /^hg:(\d{6,25}):(\d{1,5})$/;
+const HG_QUALITIES = ["1080p", "720p", "480p"];
+
+// loadResource returns play URLs for this module's episodes only. The link is
+// trusted over id; anything not ours yields [] without a request.
+async function loadResource(params = {}) {
+  const raw = params.link != null && params.link !== "" ? params.link : params.id;
+  const s = String(raw == null ? "" : raw);
+  let sid, no;
+  const m = HG_EP_LINK_RE.exec(s);
+  if (m) {
+    sid = m[1];
+    no = Number(m[2]);
+  } else {
+    const sm = HG_LINK_RE.exec(s);
+    no = Number(params.episode);
+    if (!sm || !(no > 0)) return [];
+    sid = sm[1];
+  }
+  try {
+    const conf = hgConfig(params);
+    const order = [conf.quality, ...HG_QUALITIES.filter((q) => q !== conf.quality)];
+    return order.map((q) => ({
+      name: q.toUpperCase(),
+      description: "红果 · hgsd 解密 · " + q.toUpperCase(),
+      url: conf.server + "/play/" + sid + "/" + no + ".mp4?q=" + q + "&t=" + encodeURIComponent(conf.token),
+      playerType: "app",
+    }));
+  } catch (error) {
+    console.error(HG_TAG, "resource", s, error.message || error);
     throw error;
   }
 }
