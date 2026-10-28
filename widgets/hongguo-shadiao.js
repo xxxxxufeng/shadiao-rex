@@ -1,11 +1,12 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.2",
+  version: "1.2.3",
   requiredVersion: "0.0.1",
-  description: "红果沙雕/搞笑漫剧：热门、最新、播放记录。需要自建 hgsd 服务。",
+  description: "热门、最新、分类、搜索、播放记录，看完不再推荐，不含 AI 剧",
   author: "xufeng",
-  site: "https://github.com/beilunyang/openhongguo",
+  site: "https://github.com/xxxxxufeng/shadiao-rex",
+  icon: "https://raw.githubusercontent.com/xxxxxufeng/shadiao-rex/main/icon.png",
   detailCacheDuration: 60,
   globalParams: [
     {
