@@ -9,27 +9,104 @@
 
 > 仅供个人学习与自用。红果内容版权归原平台所有，请勿用于商业或公开分发。
 
-## 部署 hgsd
+## Docker 部署
+
+镜像：`ghcr.io/xxxxxufeng/shadiao-rex:latest`，支持 `linux/amd64` 和 `linux/arm64`（群晖/威联通/Linux 服务器/Apple 芯片 Mac 均可），公开镜像，无需登录。
+
+### 方式一：docker compose（推荐）
 
 ```sh
 mkdir shadiao && cd shadiao
 curl -O https://raw.githubusercontent.com/xxxxxufeng/shadiao-rex/main/docker-compose.yml
 docker compose up -d
-cat data/config.json   # 首次启动自动生成访问口令 token
 ```
 
-镜像：`ghcr.io/xxxxxufeng/shadiao-rex:latest`（amd64 / arm64）。首次启动后台会花几分钟建沙雕池。
+`docker-compose.yml` 内容如下，也可以手动创建：
 
-`data/config.json`（改完 `docker compose restart`）：
+```yaml
+services:
+  hgsd:
+    image: ghcr.io/xxxxxufeng/shadiao-rex:latest
+    container_name: hgsd
+    restart: unless-stopped
+    ports:
+      - "8686:8686"
+    volumes:
+      - ./data:/data
+```
 
-| 字段 | 说明 |
+### 方式二：docker run
+
+```sh
+docker run -d --name hgsd --restart unless-stopped \
+  -p 8686:8686 -v $(pwd)/data:/data \
+  ghcr.io/xxxxxufeng/shadiao-rex:latest
+```
+
+### 启动后
+
+```sh
+curl http://localhost:8686/healthz     # 返回 ok 即正常
+cat data/config.json                   # 查看自动生成的访问口令 token
+docker logs -f hgsd                    # 查看日志
+```
+
+首次启动会在后台建「沙雕池」（搜索约 40 个关键词，**需要 5～10 分钟**），日志出现 `pool: refreshed, N shows` 之后，热门/最新/分类才有内容。
+
+### 配置
+
+首次启动在 `data/config.json` 生成配置，修改后执行 `docker compose restart`：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `token` | 随机生成 | 访问口令，rex 模块里填它。要换口令就改这里 |
+| `listen` | `:8686` | 容器内监听地址，一般不用改；改宿主机端口请改 compose 的 `ports`，如 `"9000:8686"` |
+| `publicBase` | 空 | 对外访问地址，如 `https://hg.example.com`。用来生成播放链接，**经反向代理访问时必须填** |
+| `keywords` | 内置 40 个 | 沙雕池的搜索种子词 |
+| `refreshHours` | `6` | 沙雕池刷新间隔（小时） |
+
+### 数据目录
+
+`data/` 下的文件，备份或迁移时整个目录拷走即可：
+
+| 文件 | 内容 |
 |---|---|
-| `token` | 访问口令，rex 模块里填它 |
-| `publicBase` | 对外地址，例如 `https://hg.example.com`。生成播放链接用；留空则用请求的 Host |
-| `keywords` | 沙雕池的搜索种子词，留空用内置的 40 个 |
-| `refreshHours` | 沙雕池刷新间隔（小时），默认 6 |
+| `config.json` | 配置与口令 |
+| `history.json` | 播放记录 |
+| `pool.json` | 沙雕池缓存（删掉会在启动时重建） |
+| `anonymous.json` / `meta.json` | 红果匿名设备档案（删掉会自动重新注册） |
 
-要在外网用，请在前面加一层 HTTPS 反向代理（Caddy / Nginx 等）——口令会出现在播放链接里。
+容器以 uid 1000 运行。如果日志提示 `permission denied`，执行 `sudo chown -R 1000 data`。
+
+### 外网访问（HTTPS 反向代理）
+
+口令会出现在播放链接里，外网使用请务必走 HTTPS。以 Caddy 为例：
+
+```
+hg.example.com {
+    reverse_proxy 127.0.0.1:8686
+}
+```
+
+然后在 `data/config.json` 里设置 `"publicBase": "https://hg.example.com"` 并重启容器。Nginx 等其他反代同理，注意不要缓存、不要限制响应大小（视频是流式返回的，支持 Range 拖动进度）。
+
+只在家里局域网用的话不需要反代，服务地址直接填 `http://局域网IP:8686`。
+
+### 升级
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+`data/` 不受影响，口令和播放记录都会保留。
+
+### 常见问题
+
+- **rex 里列表是空的**：沙雕池还在建，看 `docker logs hgsd` 等出现 `pool: refreshed`。
+- **rex 提示无法加载**：先在手机浏览器打开 `服务地址/healthz` 看是否返回 `ok`。打不开是网络问题；iOS 访问局域网 IP 需要在「设置 → 隐私与安全性 → 本地网络」里允许 rex。
+- **点详情提示「请先在模块设置填写 server 和 token」**：先打开一次任意列表再点详情。
+- **播放失败、日志里有 `anonymous response was empty`**：红果限制了匿名设备，服务会自动换新设备重试；偶发可忽略。
+- **播放报 502 且持续出现**：可能红果改了接口，等镜像更新后 `docker compose pull` 升级。
 
 ## 在 rex 里使用
 
