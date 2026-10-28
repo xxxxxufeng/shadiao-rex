@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "xufeng.hongguo.shadiao",
   title: "沙雕漫剧",
-  version: "1.2.6",
+  version: "1.2.7",
   requiredVersion: "0.0.1",
   description: "热门、最新、分类、搜索、播放记录，看完不再推荐，不含 AI 剧",
   author: "xufeng",
@@ -309,21 +309,24 @@ async function search(params = {}) {
   }
 }
 
-async function loadDetail(link) {
+async function loadDetail(link, params) {
   const ln = typeof link === "string" ? link : "";
   const em = HG_EP_LINK_RE.exec(ln);
-  if (em) return hgEpisodeDetail(em[1], Number(em[2]), ln);
+  if (em) {
+    const conf = hgLinkConfig(em, params);
+    return conf ? hgEpisodeDetail(conf, em[1], Number(em[2]), ln) : null;
+  }
   const m = HG_LINK_RE.exec(ln);
   if (!m) return null;
   try {
-    const conf = hgConfig();
+    const conf = hgConfig(params && params.server ? params : undefined);
     const s = await hgGet(conf, "/api/series/" + m[1]);
     const item = hgItem(s);
     // rex starts playback at `episode`: resume where the user left off, else from 1
     item.episode = s.lastEpisode || 1;
     item.episodeItems = (s.episodeList || []).map((e) => ({
       id: item.id + ":" + e.no,
-      link: item.id + ":" + e.no,
+      link: hgEpisodeLink(m[1], e.no, conf),
       type: "url",
       mediaType: "tv",
       title: e.no === s.lastEpisode ? "▶ 第" + e.no + "集（上次看到）" : "第" + e.no + "集",
@@ -343,19 +346,50 @@ async function loadDetail(link) {
   }
 }
 
-const HG_EP_LINK_RE = /^hg:(\d{6,25}):(\d{1,5})$/;
+// episode link: hg:<series>:<episode>[|<server>|<token>] (URI-encoded parts).
+// rex forgets Widget.storage on relaunch but hands this link back when it
+// resumes continue-watching, so the link carries the server it came from.
+const HG_EP_LINK_RE = /^hg:(\d{6,25}):(\d{1,5})(?:\|([^|]+)\|([^|]+))?$/;
+
+function hgEpisodeLink(sid, no, conf) {
+  return "hg:" + sid + ":" + no + "|" + encodeURIComponent(conf.server) + "|" + encodeURIComponent(conf.token);
+}
+
+// hgLinkConfig picks the config for an episode link: module settings passed
+// in params, else the server/token in the link, else what a list stored.
+// A link carrying a non-http(s) server yields null.
+function hgLinkConfig(m, params) {
+  if (params && params.server && params.token) return hgConfig(params);
+  if (m[3]) {
+    let server, token;
+    try {
+      server = decodeURIComponent(m[3]).replace(/\/+$/, "");
+      token = decodeURIComponent(m[4]);
+    } catch (e) {
+      return null;
+    }
+    if (!/^https?:\/\/[^\s/]+/.test(server) || !token) return null;
+    let quality = "1080p";
+    try {
+      const raw = Widget.storage.get(HG_CONF_KEY);
+      const stored = raw && (typeof raw === "string" ? JSON.parse(raw) : raw);
+      if (stored && stored.quality) quality = stored.quality;
+    } catch (e) {}
+    return { server, token, quality };
+  }
+  return hgConfig();
+}
 
 // hgEpisodeDetail is a single playable episode; rex resumes continue-watching
 // entries by calling loadDetail with the episode's link.
-async function hgEpisodeDetail(sid, no, link) {
+async function hgEpisodeDetail(conf, sid, no, link) {
   try {
-    const conf = hgConfig();
     const s = await hgGet(conf, "/api/series/" + sid);
     const e = (s.episodeList || []).find((x) => x.no === no);
     if (!e) return null;
     const item = hgItem(s, s.title + " 第" + no + "集");
     return Object.assign(item, {
-      id: link,
+      id: "hg:" + sid + ":" + no,
       link,
       episodeName: "第" + no + "集",
       duration: e.duration,
@@ -376,7 +410,10 @@ async function loadResource(params = {}) {
   const s = String(raw == null ? "" : raw);
   let sid, no;
   const m = HG_EP_LINK_RE.exec(s);
+  let conf;
   if (m) {
+    conf = hgLinkConfig(m, params);
+    if (!conf) return [];
     sid = m[1];
     no = Number(m[2]);
   } else {
@@ -386,7 +423,7 @@ async function loadResource(params = {}) {
     sid = sm[1];
   }
   try {
-    const conf = hgConfig(params);
+    conf = conf || hgConfig(params);
     const order = [conf.quality, ...HG_QUALITIES.filter((q) => q !== conf.quality)];
     return order.map((q) => ({
       name: q.toUpperCase(),

@@ -122,7 +122,10 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   assert.equal(d.childItems, undefined);
 
   // episodes carry a link so rex can resume them later through loadResource
-  assert.equal(d.episodeItems[2].link, "hg:7699740362100706328:3");
+  // the link carries server+token: rex drops Widget.storage on relaunch
+  const EP3 = `hg:7699740362100706328:3|${encodeURIComponent(SERVER)}|${TOKEN}`;
+  assert.equal(d.episodeItems[2].link, EP3);
+  assert.equal(d.episodeItems[2].id, "hg:7699740362100706328:3");
 
   // loadResource: rex's "continue watching" re-resolves the episode through this module
   const rm = WidgetMetadata.modules.find((m) => m.id === "loadResource");
@@ -145,16 +148,29 @@ eval(fs.readFileSync(process.argv[2] || "./widgets/hongguo-shadiao.js", "utf8"))
   }
   assert.equal(calls.length, n0);
 
-  // continue-watching resumes an episode via loadDetail(episode link)
-  const ep = await loadDetail("hg:7699740362100706328:3");
+  // continue-watching after an app relaunch: storage is empty, the link has what we need
+  const saved = Widget.storage._m;
+  Widget.storage._m = {};
+  const ep = await loadDetail(EP3);
   assert.equal(calls.at(-1).url, SERVER + "/api/series/7699740362100706328");
-  assert.equal(ep.link, "hg:7699740362100706328:3");
+  assert.equal(ep.link, EP3);
+  assert.equal(ep.id, "hg:7699740362100706328:3");
   assert.equal(ep.type, "url");
   assert.equal(ep.videoUrl, `${SERVER}/play/7699740362100706328/3.mp4?q=720p&t=${TOKEN}`);
   assert.equal(ep.title, "荒岛 第3集");
   assert.equal(ep.episodeName, "第3集");
   assert.equal(ep.coverUrl, "https://img/7699740362100706328.heic");
   assert.equal(ep.episode, undefined);
+  const rl = await loadResource({ link: EP3 });
+  assert.equal(rl[0].url, `${SERVER}/play/7699740362100706328/3.mp4?q=1080p&t=${TOKEN}`, "no stored quality: 1080p first");
+  // globals passed to loadDetail as a second argument also work
+  assert.equal((await loadDetail("hg:7699740362100706328:3", base)).link, "hg:7699740362100706328:3");
+  // a link carrying a non-http server is rejected without a request
+  const nb = calls.length;
+  assert.equal(await loadDetail(`hg:7699740362100706328:3|${encodeURIComponent("javascript:x")}|${TOKEN}`), null);
+  assert.deepEqual(await loadResource({ link: `hg:7699740362100706328:3|${encodeURIComponent("file:///etc")}|t` }), []);
+  assert.equal(calls.length, nb);
+  Widget.storage._m = saved;
   // an episode number the series doesn't have
   assert.equal(await loadDetail("hg:7699740362100706328:99"), null);
 
