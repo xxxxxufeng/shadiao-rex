@@ -18,6 +18,7 @@ type Config struct {
 	PublicBase   string   `json:"publicBase"`
 	Keywords     []string `json:"keywords"`
 	RefreshHours int      `json:"refreshHours"`
+	CacheMB      int      `json:"cacheMB"` // decrypted-episode disk cache; -1 disables
 }
 
 var defaultKeywords = []string{"沙雕", "表情包", "沙雕动画", "搞笑", "无厘头", "爆笑", "穿越", "系统", "修仙", "逆袭", "规则怪谈", "诡异", "末世", "无限流", "游戏", "异能", "升级", "古代", "都市", "校园", "年代", "乡村", "直播", "求生", "玄幻", "重生", "神豪", "皇帝", "大明", "三国", "西游", "熊猫头", "怪谈", "宿舍", "猎人", "家族", "仙门", "师兄", "老六", "整活"}
@@ -49,6 +50,9 @@ func Load(dir string) (*Config, error) {
 	}
 	if c.RefreshHours <= 0 {
 		c.RefreshHours = 6
+	}
+	if c.CacheMB == 0 {
+		c.CacheMB = 2048
 	}
 	c.DataDir = dir
 	if err := os.MkdirAll(dir, 0o700); err != nil {

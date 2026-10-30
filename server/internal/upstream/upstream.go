@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"sync"
 	"time"
@@ -56,6 +57,12 @@ type sdkHongguo struct {
 	metaR    resetter
 	metaMu   sync.Mutex
 	metaGood bool
+
+	// play is a separate anonymous device for ResolvePlayback: Hongguo serves
+	// a fresh device exactly one playback, so it is replaced after every use.
+	play     *sdk.Client
+	playMu   sync.Mutex
+	playUsed bool
 }
 
 // styleProbeID is a long-running 沙雕-style series used to check a device's taxonomy.
@@ -70,7 +77,11 @@ func NewSDK(dataDir string) (Hongguo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &sdkHongguo{c: c, meta: meta}, nil
+	play, err := adapters.NewClient(filepath.Join(dataDir, "play.json"), sdk.Options{RetryAttempts: 3})
+	if err != nil {
+		return nil, err
+	}
+	return &sdkHongguo{c: c, meta: meta, play: play, playUsed: true}, nil
 }
 
 func wrap(err error) error {
@@ -180,14 +191,30 @@ func (h *sdkHongguo) Related(ctx context.Context, seriesID string) ([]string, er
 }
 
 func (h *sdkHongguo) Resolve(ctx context.Context, episodeID, quality string) (*Play, error) {
-	var pb *model.Playback
-	err := h.r.do(ctx, func() (err error) {
-		pb, err = h.c.ResolvePlayback(ctx, episodeID, sdk.PlaybackOptions{})
+	h.playMu.Lock()
+	defer h.playMu.Unlock()
+	if h.playUsed {
+		if err := h.play.ResetDevice(ctx); err != nil {
+			return nil, wrap(err)
+		}
+		h.playUsed = false
+	}
+	resolve := func() (pb *model.Playback, err error) {
+		pb, err = h.play.ResolvePlayback(ctx, episodeID, sdk.PlaybackOptions{})
 		if errors.Is(err, sdk.ErrDRMProtected) {
 			err = nil
 		}
-		return err
-	}, h.c.ResetDevice)
+		return pb, err
+	}
+	pb, err := resolve()
+	if limited(err) {
+		log.Printf("upstream: play device: %v; registering a new one", err)
+		if err = h.play.ResetDevice(ctx); err == nil {
+			pb, err = resolve()
+		}
+	}
+	h.playUsed = true
+	go h.renewPlayDevice()
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -206,6 +233,21 @@ func (h *sdkHongguo) Resolve(ctx context.Context, episodeID, quality string) (*P
 		}
 	}
 	return p, nil
+}
+
+// renewPlayDevice registers the next play device ahead of time so the next
+// Resolve doesn't wait for it.
+func (h *sdkHongguo) renewPlayDevice() {
+	h.playMu.Lock()
+	defer h.playMu.Unlock()
+	if !h.playUsed {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := h.play.ResetDevice(ctx); err == nil {
+		h.playUsed = false
+	}
 }
 
 func toShow(s *model.Series) Show {

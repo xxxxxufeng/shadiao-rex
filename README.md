@@ -4,7 +4,7 @@
 
 由两部分组成：
 
-- **hgsd**（`server/`）：自己部署的 Go 服务。用 [openhongguo](https://github.com/beilunyang/openhongguo) 以匿名设备调红果，聚合沙雕画风的漫剧、记录播放进度，并把红果 CENC 加密的 MP4 边拉边解密转给播放器（rex 无法自己解密）。
+- **hgsd**（`server/`）：自己部署的 Go 服务。用 [openhongguo](https://github.com/beilunyang/openhongguo) 以匿名设备调红果，聚合沙雕画风的漫剧、记录播放进度，并把红果 CENC 加密的 MP4 边拉边解密转给播放器（rex 无法自己解密），同时预缓存下一集。
 - **rex 模块**（`widgets/hongguo-shadiao.js`）：只调你的 hgsd。
 
 > 仅供个人学习与自用。红果内容版权归原平台所有，请勿用于商业或公开分发。
@@ -77,6 +77,7 @@ docker exec hgsd cat /data/config.json      # 不在该目录时，直接读容�
 | `publicBase` | 空 | 对外访问地址，如 `https://hg.example.com`。用来生成播放链接，**经反向代理访问时必须填** |
 | `keywords` | 内置 40 个 | 沙雕池的搜索种子词 |
 | `refreshHours` | `6` | 沙雕池刷新间隔（小时） |
+| `cacheMB` | `2048` | 预缓存的磁盘上限（MB）：播放第 N 集时后台把第 N+1 集下载解密到 `data/cache`，切下一集直接从本地读，超出上限按最久未播放清理。`-1` 关闭 |
 
 ### 数据目录
 
@@ -87,7 +88,8 @@ docker exec hgsd cat /data/config.json      # 不在该目录时，直接读容�
 | `config.json` | 配置与口令 |
 | `history.json` | 播放记录 |
 | `pool.json` | 沙雕池缓存（删掉会在启动时重建） |
-| `anonymous.json` / `meta.json` | 红果匿名设备档案（删掉会自动重新注册） |
+| `anonymous.json` / `meta.json` / `play.json` | 红果匿名设备档案（删掉会自动重新注册） |
+| `cache/` | 预缓存的已解密分集，可随时删除 |
 
 容器启动时会自动把 `data/` 的属主改为容器内用户（uid 1000），再以该非 root 用户运行服务。
 
@@ -118,7 +120,7 @@ docker compose pull && docker compose up -d
 - **rex 里列表是空的**：沙雕池还在建，看 `docker logs hgsd` 等出现 `pool: refreshed`。
 - **rex 提示无法加载**：先在手机浏览器打开 `服务地址/healthz` 看是否返回 `ok`。打不开是网络问题；iOS 访问局域网 IP 需要在「设置 → 隐私与安全性 → 本地网络」里允许 rex。
 - **点详情提示「请先在模块设置填写 server 和 token」**：先打开一次任意列表再点详情。
-- **播放失败、日志里有 `anonymous response was empty`**：红果限制了匿名设备，服务会自动换新设备重试；偶发可忽略。
+- **播放失败、日志里有 `anonymous response was empty`**：红果限制了匿名设备，服务会自动换新设备重试；偶发可忽略。红果现在每个新匿名设备只给一次播放地址，旧版本连续切集会 502，请 `docker compose pull` 升级。
 - **「继续观看」提示「当前条目的来源配置已不可用」**：这条记录是 1.2.8 之前的版本播放时留下的。把它从继续观看里删掉，或从详情页重新点一次那一集，之后重启 rex 也能正常续播。
 - **播放报 502 且持续出现**：可能红果改了接口，等镜像更新后 `docker compose pull` 升级。
 
@@ -184,7 +186,8 @@ docker compose pull && docker compose up -d
 
 ## 说明
 
-- 红果匿名设备用一阵会被限制，hgsd 会自动换新设备。
+- 红果匿名设备用一阵会被限制，hgsd 会自动换新设备；取播放地址单独用一个设备，每次用完即换。
+- 播放时会预缓存下一集（见配置 `cacheMB`），连续追剧切集几乎无等待。
 - "沙雕画风"靠红果的画风标签（`沙雕` / `表情包`）判断，AI 3D（`3D` / `3D漫`）全部排除。
 - 播放记录存在 `data/history.json`：完结剧播过最后一集算看完，连载剧追到最新集算追平，二者都不再推荐。
 

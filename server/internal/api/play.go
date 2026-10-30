@@ -198,16 +198,21 @@ func (s *server) play(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	k := ep.ID + "|" + q
-	for attempt := 0; attempt < 2; attempt++ {
-		err = s.serveEpisode(w, r, k, ep.ID, q, attempt > 0)
-		if !errors.Is(err, errExpired) {
-			break
+	if !s.serveCached(w, r, k) {
+		for attempt := 0; attempt < 2; attempt++ {
+			err = s.serveEpisode(w, r, k, ep.ID, q, attempt > 0)
+			if !errors.Is(err, errExpired) {
+				break
+			}
+			log.Printf("play %s: cdn url expired, re-resolving", k)
 		}
-		log.Printf("play %s: cdn url expired, re-resolving", k)
+		if err != nil {
+			fail(w, err)
+			return
+		}
 	}
-	if err != nil {
-		fail(w, err)
-		return
+	if r.Method == http.MethodGet {
+		s.prefetchNext(eps, no, q)
 	}
 	if sh, err := s.show(ctx, id); err == nil {
 		if n := len(eps); n > sh.Episodes {

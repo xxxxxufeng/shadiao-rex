@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -89,6 +90,7 @@ type server struct {
 	cursors  map[string]string // search q + "\x00" + page -> upstream cursor
 	plays    map[string]*upstream.Play
 	layouts  *layoutCache
+	cache    *diskCache // nil when disabled
 }
 
 type cached[T any] struct {
@@ -100,6 +102,9 @@ func NewMux(d Deps) *http.ServeMux {
 	s := &server{Deps: d, now: time.Now,
 		shows: map[string]cached[upstream.Show]{}, episodes: map[string]cached[[]upstream.Episode]{},
 		cursors: map[string]string{}, plays: map[string]*upstream.Play{}, layouts: newLayoutCache(32)}
+	if d.Cfg.DataDir != "" && d.Cfg.CacheMB > 0 {
+		s.cache = newDiskCache(filepath.Join(d.Cfg.DataDir, "cache"), int64(d.Cfg.CacheMB)<<20)
+	}
 	if s.HTTP == nil {
 		s.HTTP = http.DefaultClient
 	}

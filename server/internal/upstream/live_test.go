@@ -35,3 +35,21 @@ func TestLiveSearchAndResolve(t *testing.T) {
 	}
 	t.Logf("related %d, first show %+v", len(rel), shows[0])
 }
+
+func TestLiveResolveRepeatedly(t *testing.T) {
+	h, err := NewSDK(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	eps, err := h.Episodes(ctx, "7699701691242777624")
+	if err != nil || len(eps) < 4 {
+		t.Fatalf("episodes: %v", err)
+	}
+	// a fresh anonymous device serves one playback; Resolve must keep working
+	for _, e := range eps[:4] {
+		if p, err := h.Resolve(ctx, e.ID, "1080p"); err != nil || p.URL == "" {
+			t.Fatalf("ep%d: %v", e.No, err)
+		}
+	}
+}

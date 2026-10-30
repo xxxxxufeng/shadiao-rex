@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/xxxxxufeng/shadiao-rex/server/internal/cenc"
+	"github.com/xxxxxufeng/shadiao-rex/server/internal/config"
 	"github.com/xxxxxufeng/shadiao-rex/server/internal/upstream"
 )
 
@@ -153,5 +154,45 @@ func TestPlayNotCacheable(t *testing.T) {
 	// decrypted video must not be cached by CDNs/proxies (and plays must reach us to be recorded)
 	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
 		t.Fatalf("Cache-Control %q", got)
+	}
+}
+
+func TestPlayPrefetchesNextEpisode(t *testing.T) {
+	enc, key := fixture(t)
+	c, hits := cdn(t, enc)
+	e := newEnv(t)
+	e.f.Plays = []*upstream.Play{{URL: c.URL + "/ok", Key: key, Size: int64(len(enc)), ExpiresAt: time.Now().Add(6 * time.Hour)}}
+	dir := t.TempDir()
+	e.h = NewMux(Deps{Cfg: &config.Config{Token: tok, DataDir: dir, CacheMB: 100}, Up: e.f, Pool: e.pool, Hist: e.hist, HTTP: http.DefaultClient})
+	_, full := playEnv(t)
+	e.f.Eps["1001"] = e.f.Eps["1001"][:2] // so playing 2 prefetches nothing further
+
+	if w := e.get(t, "/play/1001/1.mp4", "Range", "bytes=0-99"); w.Code != 206 {
+		t.Fatalf("code %d", w.Code)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if m, _ := filepath.Glob(filepath.Join(dir, "cache", "*.mp4")); len(m) == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("episode 2 never cached")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	before := atomic.LoadInt32(hits)
+	w := e.get(t, "/play/1001/2.mp4")
+	if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), full) {
+		t.Fatalf("cached full: code %d len %d", w.Code, w.Body.Len())
+	}
+	w = e.get(t, "/play/1001/2.mp4", "Range", "bytes=3000000-3000999")
+	if w.Code != 206 || !bytes.Equal(w.Body.Bytes(), full[3000000:3001000]) {
+		t.Fatalf("cached range: code %d", w.Code)
+	}
+	if after := atomic.LoadInt32(hits); after != before {
+		t.Fatalf("cached episode hit the cdn %d times", after-before)
+	}
+	if h, _ := e.hist.Get("1001"); h.LastEpisode != 2 {
+		t.Fatalf("history %+v", h)
 	}
 }
