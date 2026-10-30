@@ -29,8 +29,10 @@ type Deps struct {
 	Cfg  *config.Config
 	Up   upstream.Hongguo
 	Pool *pool.Pool
-	Hist *history.Store
-	HTTP *http.Client
+	Hist *history.Store // history of Cfg.Token
+	// Extra maps each of Cfg.ExtraTokens' tokens to that user's own history.
+	Extra map[string]*history.Store
+	HTTP  *http.Client
 }
 
 type ShowDTO struct {
@@ -64,21 +66,38 @@ type SeriesDTO struct {
 
 var seriesIDRe = regexp.MustCompile(`^\d{4,25}$`)
 
-// RequireToken rejects requests lacking the token (query t= or X-Token header)
-// before next runs, so unauthorized callers never reach upstream.
-func RequireToken(token string, next http.Handler) http.Handler {
+type userKey struct{}
+
+// user is the caller's token and the history it reads and writes.
+type user struct {
+	token string
+	hist  *history.Store
+}
+
+// RequireToken rejects requests lacking a known token (query t= or X-Token
+// header) before next runs, so unauthorized callers never reach upstream.
+// The matched token's history is passed on in the request context.
+func RequireToken(users map[string]*history.Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.URL.Query().Get("t")
 		if got == "" {
 			got = r.Header.Get("X-Token")
 		}
-		if token == "" || subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
+		var u *user
+		for tok, h := range users {
+			if tok != "" && subtle.ConstantTimeCompare([]byte(got), []byte(tok)) == 1 {
+				u = &user{tok, h}
+			}
+		}
+		if u == nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey{}, u)))
 	})
 }
+
+func userOf(r *http.Request) *user { return r.Context().Value(userKey{}).(*user) }
 
 type server struct {
 	Deps
@@ -116,8 +135,12 @@ func NewMux(d Deps) *http.ServeMux {
 	protected.HandleFunc("GET /api/series/{id}", s.series)
 	protected.HandleFunc("GET /api/history", s.history)
 	protected.HandleFunc("GET /play/{id}/{file}", s.play)
-	mux.Handle("/api/", RequireToken(d.Cfg.Token, protected))
-	mux.Handle("/play/", RequireToken(d.Cfg.Token, protected))
+	users := map[string]*history.Store{d.Cfg.Token: d.Hist}
+	for tok, h := range d.Extra {
+		users[tok] = h
+	}
+	mux.Handle("/api/", RequireToken(users, protected))
+	mux.Handle("/play/", RequireToken(users, protected))
 	return mux
 }
 
@@ -145,13 +168,13 @@ func pageParam(r *http.Request) int {
 	return p
 }
 
-func (s *server) dto(sh upstream.Show) ShowDTO {
+func (s *server) dto(h *history.Store, sh upstream.Show) ShowDTO {
 	d := ShowDTO{ID: sh.ID, Title: sh.Title, Description: sh.Description, Cover: sh.Cover,
 		Episodes: sh.Episodes, Finished: sh.Finished, Heat: sh.Heat, Created: sh.Created.Unix(), Tags: sh.Tags}
 	if d.Tags == nil {
 		d.Tags = []string{}
 	}
-	if e, ok := s.Hist.Get(sh.ID); ok {
+	if e, ok := h.Get(sh.ID); ok {
 		d.LastEpisode, d.Completed, d.CaughtUp = e.LastEpisode, e.Completed, e.CaughtUp
 		d.HasUpdate = e.HasUpdate(sh.Episodes)
 	}
@@ -160,29 +183,31 @@ func (s *server) dto(sh upstream.Show) ShowDTO {
 
 // observeHistory lets the history store see fresh episode counts from the pool,
 // so caught-up series with new episodes come back.
-func (s *server) observeHistory() {
-	for _, e := range s.Hist.Recent() {
+func (s *server) observeHistory(h *history.Store) {
+	for _, e := range h.Recent() {
 		if sh, ok := s.Pool.Get(e.SeriesID); ok {
-			s.Hist.Observe(sh)
+			h.Observe(sh)
 		}
 	}
 }
 
 func (s *server) list(w http.ResponseWriter, r *http.Request) {
+	h := userOf(r).hist
 	kind := r.URL.Query().Get("kind")
 	if kind != "new" {
 		kind = "hot"
 	}
-	s.observeHistory()
+	s.observeHistory(h)
 	out := []ShowDTO{}
 	match := pool.Match(r.URL.Query().Get("cat"), r.URL.Query().Get("tag"))
-	for _, sh := range s.Pool.ListMatch(kind, match, s.Hist.Excluded, pageParam(r), pageSize) {
-		out = append(out, s.dto(sh))
+	for _, sh := range s.Pool.ListMatch(kind, match, h.Excluded, pageParam(r), pageSize) {
+		out = append(out, s.dto(h, sh))
 	}
 	writeJSON(w, out)
 }
 
 func (s *server) search(w http.ResponseWriter, r *http.Request) {
+	h := userOf(r).hist
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
 		writeJSON(w, []ShowDTO{})
@@ -204,9 +229,9 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 			}
 			return false
 		}
-		for _, sh := range s.Pool.ListMatch("hot", inPool, s.Hist.Excluded, 1, pageSize) {
+		for _, sh := range s.Pool.ListMatch("hot", inPool, h.Excluded, 1, pageSize) {
 			seen[sh.ID] = true
-			out = append(out, s.dto(sh))
+			out = append(out, s.dto(h, sh))
 		}
 	}
 	ids, err := s.searchPage(r.Context(), q, page)
@@ -224,9 +249,9 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, sh := range shows {
-		if !seen[sh.ID] && !s.Hist.Excluded(sh.ID) && pool.Keep(sh) {
+		if !seen[sh.ID] && !h.Excluded(sh.ID) && pool.Keep(sh) {
 			seen[sh.ID] = true
-			out = append(out, s.dto(sh))
+			out = append(out, s.dto(h, sh))
 		}
 	}
 	writeJSON(w, out)
@@ -335,6 +360,8 @@ func (s *server) publicBase(r *http.Request) string {
 }
 
 func (s *server) series(w http.ResponseWriter, r *http.Request) {
+	u := userOf(r)
+	h := u.hist
 	id := r.PathValue("id")
 	if !seriesIDRe.MatchString(id) {
 		http.NotFound(w, r)
@@ -349,7 +376,7 @@ func (s *server) series(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	s.Hist.Observe(sh)
+	h.Observe(sh)
 	eps, err := s.episodeList(r.Context(), id)
 	if err != nil {
 		fail(w, err)
@@ -359,26 +386,26 @@ func (s *server) series(w http.ResponseWriter, r *http.Request) {
 	if q == "" {
 		q = "1080p"
 	}
-	out := SeriesDTO{ShowDTO: s.dto(sh), EpisodeList: []EpisodeDTO{}, Related: []ShowDTO{}}
+	out := SeriesDTO{ShowDTO: s.dto(h, sh), EpisodeList: []EpisodeDTO{}, Related: []ShowDTO{}}
 	base := s.publicBase(r)
 	for _, e := range eps {
-		u := fmt.Sprintf("%s/play/%s/%d.mp4?q=%s&t=%s", base, id, e.No, q, url.QueryEscape(s.Cfg.Token))
+		u := fmt.Sprintf("%s/play/%s/%d.mp4?q=%s&t=%s", base, id, e.No, q, url.QueryEscape(u.token))
 		out.EpisodeList = append(out.EpisodeList, EpisodeDTO{No: e.No, Title: e.Title, Duration: e.DurationSec, URL: u})
 	}
 	if relIDs, err := s.Up.Related(r.Context(), id); err == nil {
 		if rel, err := s.showsByID(r.Context(), relIDs); err == nil {
 			for _, rs := range rel {
-				if rs.ID != id && pool.Keep(rs) && !s.Hist.Excluded(rs.ID) {
-					out.Related = append(out.Related, s.dto(rs))
+				if rs.ID != id && pool.Keep(rs) && !h.Excluded(rs.ID) {
+					out.Related = append(out.Related, s.dto(h, rs))
 				}
 			}
 		}
 	}
 	if len(out.Related) == 0 {
 		// anonymous devices get a generic "更多好剧" list; fall back to the pool
-		for _, rs := range s.Pool.List("hot", s.Hist.Excluded, 1, 11) {
+		for _, rs := range s.Pool.List("hot", h.Excluded, 1, 11) {
 			if rs.ID != id && len(out.Related) < 10 {
-				out.Related = append(out.Related, s.dto(rs))
+				out.Related = append(out.Related, s.dto(h, rs))
 			}
 		}
 	}
@@ -386,14 +413,15 @@ func (s *server) series(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) history(w http.ResponseWriter, r *http.Request) {
-	s.observeHistory()
+	h := userOf(r).hist
+	s.observeHistory(h)
 	out := []ShowDTO{}
-	for _, e := range s.Hist.Recent() {
+	for _, e := range h.Recent() {
 		sh, ok := s.Pool.Get(e.SeriesID)
 		if !ok {
 			sh = upstream.Show{ID: e.SeriesID, Title: e.Title, Cover: e.Cover, Episodes: e.Total, Finished: e.Finished}
 		}
-		out = append(out, s.dto(sh))
+		out = append(out, s.dto(h, sh))
 	}
 	writeJSON(w, out)
 }

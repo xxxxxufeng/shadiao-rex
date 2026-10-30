@@ -218,7 +218,7 @@ func (s *server) play(w http.ResponseWriter, r *http.Request) {
 		if n := len(eps); n > sh.Episodes {
 			sh.Episodes = n // the live episode list is fresher than the pool
 		}
-		s.Hist.Record(sh, no, s.now())
+		userOf(r).hist.Record(sh, no, s.now())
 	}
 }
 

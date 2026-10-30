@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	"github.com/xxxxxufeng/shadiao-rex/server/internal/config"
+	"github.com/xxxxxufeng/shadiao-rex/server/internal/history"
 )
 
 func TestRequireToken(t *testing.T) {
 	calls := 0
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ })
-	h := RequireToken("secret", next)
+	h := RequireToken(map[string]*history.Store{"secret": nil, "": nil}, next)
 	cases := []struct {
 		url, header string
 		want        int

@@ -19,6 +19,8 @@ type Config struct {
 	Keywords     []string `json:"keywords"`
 	RefreshHours int      `json:"refreshHours"`
 	CacheMB      int      `json:"cacheMB"` // decrypted-episode disk cache; -1 disables
+	// ExtraTokens are more access tokens by name, each with its own history.
+	ExtraTokens map[string]string `json:"extraTokens,omitempty"`
 }
 
 var defaultKeywords = []string{"沙雕", "表情包", "沙雕动画", "搞笑", "无厘头", "爆笑", "穿越", "系统", "修仙", "逆袭", "规则怪谈", "诡异", "末世", "无限流", "游戏", "异能", "升级", "古代", "都市", "校园", "年代", "乡村", "直播", "求生", "玄幻", "重生", "神豪", "皇帝", "大明", "三国", "西游", "熊猫头", "怪谈", "宿舍", "猎人", "家族", "仙门", "师兄", "老六", "整活"}

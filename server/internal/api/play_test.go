@@ -15,6 +15,7 @@ import (
 
 	"github.com/xxxxxufeng/shadiao-rex/server/internal/cenc"
 	"github.com/xxxxxufeng/shadiao-rex/server/internal/config"
+	"github.com/xxxxxufeng/shadiao-rex/server/internal/history"
 	"github.com/xxxxxufeng/shadiao-rex/server/internal/upstream"
 )
 
@@ -194,5 +195,42 @@ func TestPlayPrefetchesNextEpisode(t *testing.T) {
 	}
 	if h, _ := e.hist.Get("1001"); h.LastEpisode != 2 {
 		t.Fatalf("history %+v", h)
+	}
+}
+
+func TestExtraTokenHasOwnHistory(t *testing.T) {
+	enc, _ := fixture(t)
+	c, _ := cdn(t, enc)
+	e, _ := playEnv(t, c.URL+"/ok")
+	other, _ := history.Open(filepath.Join(t.TempDir(), "history-friend.json"))
+	e.h = NewMux(Deps{Cfg: &config.Config{Token: tok, PublicBase: "http://pub:8686"}, Up: e.f, Pool: e.pool, Hist: e.hist,
+		Extra: map[string]*history.Store{"friend": other}, HTTP: http.DefaultClient})
+	get := func(path string, hdr ...string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", path, nil)
+		for i := 0; i+1 < len(hdr); i += 2 {
+			r.Header.Set(hdr[i], hdr[i+1])
+		}
+		w := httptest.NewRecorder()
+		e.h.ServeHTTP(w, r)
+		return w
+	}
+	if w := get("/play/1001/2.mp4?t=friend", "Range", "bytes=0-99"); w.Code != 206 {
+		t.Fatalf("friend play %d", w.Code)
+	}
+	if h, ok := other.Get("1001"); !ok || h.LastEpisode != 2 {
+		t.Fatalf("friend history %+v", h)
+	}
+	if _, ok := e.hist.Get("1001"); ok {
+		t.Fatal("friend's play landed in the main history")
+	}
+	s := decode[SeriesDTO](t, get("/api/series/1001?t=friend"))
+	if s.LastEpisode != 2 || !strings.HasSuffix(s.EpisodeList[0].URL, "&t=friend") {
+		t.Fatalf("friend series: last %d url %s", s.LastEpisode, s.EpisodeList[0].URL)
+	}
+	if s := decode[SeriesDTO](t, e.get(t, "/api/series/1001")); s.LastEpisode != 0 {
+		t.Fatalf("main sees friend's progress: %d", s.LastEpisode)
+	}
+	if w := get("/api/list?t=nope"); w.Code != 401 {
+		t.Fatalf("unknown token %d", w.Code)
 	}
 }

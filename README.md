@@ -64,6 +64,14 @@ docker exec hgsd cat /data/config.json      # 不在该目录时，直接读容�
 
 想换口令：改 `data/config.json` 里的 `token`，然后 `docker compose restart`，rex 里同步改掉即可。
 
+想给家人朋友单独一个口令（播放记录分开）：在 `data/config.json` 里加
+
+```json
+"extraTokens": { "friend": "用 openssl rand -hex 32 生成的一串" }
+```
+
+然后 `docker compose restart`，对方在 rex 里填这串口令即可。
+
 首次启动会在后台建「沙雕池」（搜索约 40 个关键词，**需要 5～10 分钟**），日志出现 `pool: refreshed, N shows` 之后，热门/最新/分类才有内容。
 
 ### 配置
@@ -77,6 +85,7 @@ docker exec hgsd cat /data/config.json      # 不在该目录时，直接读容�
 | `publicBase` | 空 | 对外访问地址，如 `https://hg.example.com`。用来生成播放链接，**经反向代理访问时必须填** |
 | `keywords` | 内置 40 个 | 沙雕池的搜索种子词 |
 | `refreshHours` | `6` | 沙雕池刷新间隔（小时） |
+| `extraTokens` | 空 | 更多访问口令，如 `{"friend": "另一串口令"}`。每个口令的播放记录、看完列表各自独立，存在 `data/history-名字.json`；名字只能用字母、数字、`_`、`-` |
 | `cacheMB` | `2048` | 预缓存的磁盘上限（MB）：播放第 N 集时后台把第 N+1 集下载解密到 `data/cache`，切下一集直接从本地读，超出上限按最久未播放清理。`-1` 关闭 |
 
 ### 数据目录
@@ -86,7 +95,7 @@ docker exec hgsd cat /data/config.json      # 不在该目录时，直接读容�
 | 文件 | 内容 |
 |---|---|
 | `config.json` | 配置与口令 |
-| `history.json` | 播放记录 |
+| `history.json` | 播放记录（`history-名字.json` 是对应额外口令的） |
 | `pool.json` | 沙雕池缓存（删掉会在启动时重建） |
 | `anonymous.json` / `meta.json` / `play.json` | 红果匿名设备档案（删掉会自动重新注册） |
 | `cache/` | 预缓存的已解密分集，可随时删除 |
