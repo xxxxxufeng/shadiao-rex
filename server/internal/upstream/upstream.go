@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -111,25 +112,63 @@ func (h *sdkHongguo) SearchComic(ctx context.Context, q, cursor string) ([]strin
 	return ids, next, nil
 }
 
+// Shows fetches show details on the meta device. Every batch also carries the
+// style probe: an anonymous device can be moved to an unstyled tag taxonomy at
+// any time, and then every show silently loses its 沙雕/表情包 tag. When the
+// probe comes back unstyled the device is replaced and the batch retried.
 func (h *sdkHongguo) Shows(ctx context.Context, ids []string) ([]Show, error) {
-	if err := h.ensureStyledMeta(ctx); err != nil {
-		return nil, err
+	addProbe := !slices.Contains(ids, styleProbeID)
+	batch := ids
+	if addProbe {
+		batch = append(slices.Clone(ids), styleProbeID)
 	}
-	var details []model.SeriesDetail
-	err := h.metaR.do(ctx, func() (err error) {
-		details, err = h.meta.GetSeriesBatch(ctx, ids)
-		return err
-	}, h.resetMeta)
-	if err != nil {
-		return nil, wrap(err)
-	}
-	out := make([]Show, 0, len(details))
-	for _, d := range details {
-		if d.Series != nil {
-			out = append(out, toShow(d.Series))
+	for attempt := 0; ; attempt++ {
+		if err := h.ensureStyledMeta(ctx); err != nil {
+			return nil, err
 		}
+		var details []model.SeriesDetail
+		err := h.metaR.do(ctx, func() (err error) {
+			details, err = h.meta.GetSeriesBatch(ctx, batch)
+			return err
+		}, h.resetMeta)
+		if err != nil {
+			return nil, wrap(err)
+		}
+		shows := make([]Show, 0, len(details))
+		for _, d := range details {
+			if d.Series != nil {
+				shows = append(shows, toShow(d.Series))
+			}
+		}
+		out, drifted := splitProbe(shows, addProbe)
+		if !drifted {
+			return out, nil
+		}
+		if attempt == 1 {
+			return nil, errors.New("upstream: meta device keeps losing style tags")
+		}
+		log.Printf("upstream: meta device lost style tags, re-registering")
+		h.metaMu.Lock()
+		h.metaGood = false
+		h.metaMu.Unlock()
 	}
-	return out, nil
+}
+
+// splitProbe reports whether the style probe in shows came back without style
+// tags (a missing probe is unknown, not drift) and drops it when we added it.
+func splitProbe(shows []Show, added bool) ([]Show, bool) {
+	out := shows[:0:0]
+	drifted := false
+	for _, s := range shows {
+		if s.ID == styleProbeID {
+			drifted = !styled(s.Tags)
+			if added {
+				continue
+			}
+		}
+		out = append(out, s)
+	}
+	return out, drifted
 }
 
 func (h *sdkHongguo) resetMeta(ctx context.Context) error {

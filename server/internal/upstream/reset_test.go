@@ -65,3 +65,23 @@ func TestFindStyledDevice(t *testing.T) {
 		t.Fatalf("err %v resets %d", err, resets)
 	}
 }
+
+func TestSplitProbe(t *testing.T) {
+	a := Show{ID: "a", Tags: []string{"喜剧"}}
+	probe := func(tags ...string) Show { return Show{ID: styleProbeID, Tags: tags} }
+
+	out, drifted := splitProbe([]Show{a, probe("喜剧", "沙雕")}, true)
+	if len(out) != 1 || out[0].ID != "a" || drifted {
+		t.Fatalf("styled probe added by us: %v %v", out, drifted)
+	}
+	out, drifted = splitProbe([]Show{a, probe("喜剧", "表情包")}, false)
+	if len(out) != 2 || drifted {
+		t.Fatalf("styled probe the caller asked for stays: %v %v", out, drifted)
+	}
+	if _, drifted = splitProbe([]Show{a, probe("喜剧", "搞笑")}, true); !drifted {
+		t.Fatal("unstyled probe means the device drifted")
+	}
+	if _, drifted = splitProbe([]Show{a}, true); drifted {
+		t.Fatal("missing probe is unknown, not drift")
+	}
+}
