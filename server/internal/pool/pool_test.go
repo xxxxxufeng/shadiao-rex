@@ -213,3 +213,39 @@ func TestCategoriesNotTooBroad(t *testing.T) {
 		t.Fatalf("categories %v", in)
 	}
 }
+
+// A show search stops returning stays in the pool while upstream still has it
+// in the 沙雕 style; it leaves once upstream drops it or it loses the style tag.
+func TestRefreshAccumulates(t *testing.T) {
+	f := newFake()
+	p := New(f, []string{"沙雕", "搞笑"}, 3, filepath.Join(t.TempDir(), "pool.json"))
+	if err := p.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.Search = map[string][][]string{"沙雕": {{"a"}}}     // b, c, d no longer found by search
+	f.ShowsBy["c"] = show("c", "C", 20, 9, "玄幻", "3D漫") // c lost its style tag
+	delete(f.ShowsBy, "d")                              // d taken down upstream
+	if err := p.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(p.List("hot", nil, 1, 20)); !eq(got, []string{"b", "a"}) {
+		t.Fatalf("pool %v", got)
+	}
+}
+
+func TestRunRefreshesLoadedPoolOnStart(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "pool.json")
+	p := New(newFake(), []string{"沙雕"}, 3, file) // finds a, c
+	p.Refresh(context.Background())
+	q := New(newFake(), []string{"搞笑"}, 3, file) // finds b, d
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go q.Run(ctx, time.Hour)
+	deadline := time.Now().Add(2 * time.Second)
+	for q.Len() != 4 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if q.Len() != 4 {
+		t.Fatalf("loaded pool not refreshed on start: %d", q.Len())
+	}
+}

@@ -76,7 +76,10 @@ func (p *Pool) replace(list []upstream.Show) {
 	p.mu.Unlock()
 }
 
-// Refresh rebuilds the pool; on any upstream failure the current pool is kept.
+// Refresh re-resolves what search finds now plus everything already in the
+// pool, so a show only leaves when upstream drops it or it loses the style
+// tag, not because one search round missed it. On any upstream failure the
+// current pool is kept.
 func (p *Pool) Refresh(ctx context.Context) error {
 	var ids []string
 	seen := map[string]bool{}
@@ -99,6 +102,15 @@ func (p *Pool) Refresh(ctx context.Context) error {
 			cursor = next
 		}
 	}
+	found := len(ids)
+	p.mu.RLock()
+	for id := range p.shows {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	p.mu.RUnlock()
 	shows, err := p.h.Shows(ctx, ids)
 	if err != nil {
 		return err
@@ -109,7 +121,7 @@ func (p *Pool) Refresh(ctx context.Context) error {
 			kept = append(kept, s)
 		}
 	}
-	log.Printf("pool: %d ids from search, %d shows resolved, %d kept", len(ids), len(shows), len(kept))
+	log.Printf("pool: %d ids from search, %d carried over, %d shows resolved, %d kept", found, len(ids)-found, len(shows), len(kept))
 	if len(kept) == 0 {
 		// a soft-limited device returns ids without details; never swap in an empty pool
 		return errors.New("upstream: refresh produced an empty pool")
@@ -172,7 +184,7 @@ func (p *Pool) Len() int {
 	return len(p.shows)
 }
 
-// Run loads the persisted pool, refreshes immediately if empty, then every interval.
+// Run loads the persisted pool, refreshes immediately, then every interval.
 func (p *Pool) Run(ctx context.Context, every time.Duration) {
 	if err := p.Load(); err != nil && !os.IsNotExist(err) {
 		log.Printf("pool: load: %v", err)
@@ -184,9 +196,7 @@ func (p *Pool) Run(ctx context.Context, every time.Duration) {
 		}
 		log.Printf("pool: refreshed, %d shows", p.Len())
 	}
-	if p.Len() == 0 {
-		refresh()
-	}
+	refresh()
 	for {
 		wait := every
 		if p.Len() == 0 {
