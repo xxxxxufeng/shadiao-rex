@@ -47,6 +47,7 @@ func main() {
 		extra[tok] = h
 	}
 	p := pool.New(up, cfg.Keywords, 3, filepath.Join(cfg.DataDir, "pool.json"))
+	p.KeepWords = cfg.KeepWords
 	go p.Run(context.Background(), time.Duration(cfg.RefreshHours)*time.Hour)
 
 	mux := api.AccessLog(log.Default(), api.NewMux(api.Deps{Cfg: cfg, Up: up, Pool: p, Hist: hist, Extra: extra, HTTP: &http.Client{Timeout: 0}}))

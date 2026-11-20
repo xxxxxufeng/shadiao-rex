@@ -64,10 +64,59 @@ func findStyledDevice(ctx context.Context, probe func(context.Context) ([]string
 			return nil
 		}
 		if i == tries {
-			return errors.New("upstream: no anonymous device with style tags")
+			return ErrNoStyledDevice
 		}
 		if err := reset(ctx); err != nil {
 			return err
 		}
 	}
+}
+
+// styleBackoff is how long a failed search for a styled device is remembered.
+// It matches the default pool refresh interval, so in practice the background
+// refresh is what searches again, not someone waiting on a detail page.
+const styleBackoff = 6 * time.Hour
+
+// ErrNoStyledDevice: Hongguo is not handing out devices whose tags carry art style.
+var ErrNoStyledDevice = errors.New("upstream: no anonymous device with style tags")
+
+// styleGate remembers whether the meta device is on a styled taxonomy. When a
+// search for one fails, it fails fast for styleBackoff instead of searching
+// again on every request: Hongguo can stop handing out styled devices for
+// days, and each search costs a dozen registrations and about ten seconds.
+type styleGate struct {
+	mu          sync.Mutex
+	good        bool
+	failedUntil time.Time
+	now         func() time.Time
+}
+
+func (g *styleGate) invalidate() {
+	g.mu.Lock()
+	g.good = false
+	g.mu.Unlock()
+}
+
+func (g *styleGate) ensure(ctx context.Context, probe func(context.Context) ([]string, error), reset func(context.Context) error, tries int) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.good {
+		return nil
+	}
+	now := time.Now
+	if g.now != nil {
+		now = g.now
+	}
+	if now().Before(g.failedUntil) {
+		return ErrNoStyledDevice
+	}
+	if err := findStyledDevice(ctx, probe, reset, tries); err != nil {
+		if ctx.Err() == nil {
+			g.failedUntil = now().Add(styleBackoff)
+			log.Printf("upstream: %v; not searching again for %s", err, styleBackoff)
+		}
+		return err
+	}
+	g.good = true
+	return nil
 }

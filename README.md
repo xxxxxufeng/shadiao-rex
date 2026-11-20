@@ -85,6 +85,7 @@ docker exec hgsd cat /data/config.json      # 不在该目录时，直接读容�
 | `publicBase` | 空 | 对外访问地址，如 `https://hg.example.com`。用来生成播放链接，**经反向代理访问时必须填** |
 | `keywords` | 内置 40 个 | 沙雕池的搜索种子词 |
 | `refreshHours` | `6` | 沙雕池刷新间隔（小时） |
+| `keepWords` | `["虾仁"]` | 红果暂时不给画风标签时，剧名或简介含这些词的新剧照样进沙雕池。`[]` 关闭 |
 | `extraTokens` | 空 | 更多访问口令，如 `{"friend": "另一串口令"}`。每个口令的播放记录、看完列表各自独立，存在 `data/history-名字.json`；名字只能用字母、数字、`_`、`-` |
 | `cacheMB` | `2048` | 预缓存的磁盘上限（MB）：播放第 N 集时后台把第 N+1 集下载解密到 `data/cache`，切下一集直接从本地读，超出上限按最久未播放清理。`-1` 关闭 |
 

@@ -42,7 +42,10 @@ type Play struct {
 
 type Hongguo interface {
 	SearchComic(ctx context.Context, q, cursor string) (ids []string, next string, err error)
+	// Shows returns show details with style tags, or ErrNoStyledDevice.
 	Shows(ctx context.Context, ids []string) ([]Show, error)
+	// ShowsUnstyled returns show details whose tags may lack art style.
+	ShowsUnstyled(ctx context.Context, ids []string) ([]Show, error)
 	Episodes(ctx context.Context, seriesID string) ([]Episode, error)
 	Related(ctx context.Context, seriesID string) ([]string, error)
 	Resolve(ctx context.Context, episodeID, quality string) (*Play, error)
@@ -54,10 +57,9 @@ type sdkHongguo struct {
 
 	// meta is a separate anonymous device used only for show metadata. It is
 	// kept on a tag taxonomy that carries art style (see findStyledDevice).
-	meta     *sdk.Client
-	metaR    resetter
-	metaMu   sync.Mutex
-	metaGood bool
+	meta  *sdk.Client
+	metaR resetter
+	style styleGate
 
 	// play is a separate anonymous device for ResolvePlayback: Hongguo serves
 	// a fresh device exactly one playback, so it is replaced after every use.
@@ -148,10 +150,26 @@ func (h *sdkHongguo) Shows(ctx context.Context, ids []string) ([]Show, error) {
 			return nil, errors.New("upstream: meta device keeps losing style tags")
 		}
 		log.Printf("upstream: meta device lost style tags, re-registering")
-		h.metaMu.Lock()
-		h.metaGood = false
-		h.metaMu.Unlock()
+		h.style.invalidate()
 	}
+}
+
+func (h *sdkHongguo) ShowsUnstyled(ctx context.Context, ids []string) ([]Show, error) {
+	var details []model.SeriesDetail
+	err := h.metaR.do(ctx, func() (err error) {
+		details, err = h.meta.GetSeriesBatch(ctx, ids)
+		return err
+	}, h.meta.ResetDevice)
+	if err != nil {
+		return nil, wrap(err)
+	}
+	shows := make([]Show, 0, len(details))
+	for _, d := range details {
+		if d.Series != nil {
+			shows = append(shows, toShow(d.Series))
+		}
+	}
+	return shows, nil
 }
 
 // splitProbe reports whether the style probe in shows came back without style
@@ -172,9 +190,7 @@ func splitProbe(shows []Show, added bool) ([]Show, bool) {
 }
 
 func (h *sdkHongguo) resetMeta(ctx context.Context) error {
-	h.metaMu.Lock()
-	h.metaGood = false
-	h.metaMu.Unlock()
+	h.style.invalidate()
 	if err := h.meta.ResetDevice(ctx); err != nil {
 		return err
 	}
@@ -182,11 +198,6 @@ func (h *sdkHongguo) resetMeta(ctx context.Context) error {
 }
 
 func (h *sdkHongguo) ensureStyledMeta(ctx context.Context) error {
-	h.metaMu.Lock()
-	defer h.metaMu.Unlock()
-	if h.metaGood {
-		return nil
-	}
 	probe := func(ctx context.Context) ([]string, error) {
 		ds, err := h.meta.GetSeriesBatch(ctx, []string{styleProbeID})
 		if err != nil || len(ds) == 0 || ds[0].Series == nil {
@@ -194,11 +205,7 @@ func (h *sdkHongguo) ensureStyledMeta(ctx context.Context) error {
 		}
 		return toShow(ds[0].Series).Tags, nil
 	}
-	if err := findStyledDevice(ctx, probe, h.meta.ResetDevice, 12); err != nil {
-		return wrap(err)
-	}
-	h.metaGood = true
-	return nil
+	return wrap(h.style.ensure(ctx, probe, h.meta.ResetDevice, 12))
 }
 
 func (h *sdkHongguo) Episodes(ctx context.Context, seriesID string) ([]Episode, error) {

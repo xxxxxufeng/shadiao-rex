@@ -85,3 +85,52 @@ func TestSplitProbe(t *testing.T) {
 		t.Fatal("missing probe is unknown, not drift")
 	}
 }
+
+// A failed search for a styled device must not be repeated on every request:
+// each one costs a dozen device registrations and ~10s.
+func TestStyleGateBacksOffAfterFailedSearch(t *testing.T) {
+	now := time.Unix(1000, 0)
+	g := &styleGate{now: func() time.Time { return now }}
+	probes, resets := 0, 0
+	tags := []string{"恋爱"}
+	probe := func(context.Context) ([]string, error) { probes++; return tags, nil }
+	reset := func(context.Context) error { resets++; return nil }
+	ctx := context.Background()
+
+	if err := g.ensure(ctx, probe, reset, 3); err == nil {
+		t.Fatal("want error when no device is styled")
+	}
+	if resets != 3 {
+		t.Fatalf("resets %d", resets)
+	}
+	if err := g.ensure(ctx, probe, reset, 3); err == nil || resets != 3 || probes != 4 {
+		t.Fatalf("inside the back-off: err %v resets %d probes %d", err, resets, probes)
+	}
+
+	now = now.Add(styleBackoff)
+	tags = []string{"沙雕"}
+	if err := g.ensure(ctx, probe, reset, 3); err != nil {
+		t.Fatalf("after the back-off: %v", err)
+	}
+	if err := g.ensure(ctx, probe, reset, 3); err != nil || probes != 5 {
+		t.Fatalf("a good device is not probed again: err %v probes %d", err, probes)
+	}
+	g.invalidate()
+	if err := g.ensure(ctx, probe, reset, 3); err != nil || probes != 6 {
+		t.Fatalf("invalidate forces a new probe: err %v probes %d", err, probes)
+	}
+}
+
+// A search cut short by its caller going away says nothing about the devices.
+func TestStyleGateNoBackoffWhenCanceled(t *testing.T) {
+	g := &styleGate{}
+	ctx, cancel := context.WithCancel(context.Background())
+	probe := func(context.Context) ([]string, error) { return nil, nil }
+	reset := func(context.Context) error { cancel(); return ctx.Err() }
+	if err := g.ensure(ctx, probe, reset, 3); err == nil {
+		t.Fatal("want error")
+	}
+	if !g.failedUntil.IsZero() {
+		t.Fatal("a canceled search must not start the back-off")
+	}
+}

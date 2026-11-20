@@ -249,3 +249,57 @@ func TestRunRefreshesLoadedPoolOnStart(t *testing.T) {
 		t.Fatalf("loaded pool not refreshed on start: %d", q.Len())
 	}
 }
+
+// While upstream hands out no styled device, style tags can't be checked: the
+// pool keeps what it has and only takes new shows whose title or description
+// names one of KeepWords. A later styled refresh re-checks them as usual.
+func TestRefreshWithoutStyleTagsAddsByKeepWords(t *testing.T) {
+	f := newFake()
+	file := filepath.Join(t.TempDir(), "pool.json")
+	p := New(f, []string{"沙雕", "搞笑"}, 3, file)
+	p.KeepWords = []string{"虾仁"}
+	if err := p.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.NoStyle = true
+	f.Search["虾仁"] = [][]string{{"s1", "s2", "s3", "a"}}
+	f.ShowsBy["s1"] = show("s1", "虾仁：大明小县令", 50, 2, "古装")
+	f.ShowsBy["s2"] = upstream.Show{ID: "s2", Title: "一代权臣", Description: "虾仁穿越成了权臣", Heat: 5}
+	f.ShowsBy["s3"] = show("s3", "霸总的契约新娘", 99, 2, "爱情")
+	f.ShowsBy["a"] = show("a", "沙雕A", 10, 5, "搞笑") // unstyled taxonomy: old shows must not be dropped for it
+	p.keywords = append(p.keywords, "虾仁")
+	if err := p.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(p.List("hot", nil, 1, 20)); !eq(got, []string{"s1", "d", "b", "c", "a", "s2"}) {
+		t.Fatalf("pool %v", got)
+	}
+	if a, _ := p.Get("a"); !Keep(a) {
+		t.Fatalf("old show overwritten with unstyled tags: %v", a.Tags)
+	}
+	q := New(f, nil, 3, file)
+	if err := q.Load(); err != nil || q.Len() != 6 {
+		t.Fatalf("not persisted: %d %v", q.Len(), err)
+	}
+
+	// styled again: s1 turns out to be 表情包, s2 is 3D and leaves
+	f.NoStyle = false
+	f.ShowsBy["a"] = show("a", "沙雕A", 10, 5, "沙雕")
+	f.ShowsBy["s1"] = show("s1", "虾仁：大明小县令", 50, 2, "古装", "表情包")
+	f.ShowsBy["s2"] = show("s2", "一代权臣", 5, 2, "3D漫")
+	if err := p.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(p.List("hot", nil, 1, 20)); !eq(got, []string{"s1", "d", "b", "c", "a"}) {
+		t.Fatalf("pool after styled refresh %v", got)
+	}
+}
+
+func TestRefreshWithoutStyleTagsAndNoKeepWordsFails(t *testing.T) {
+	f := newFake()
+	p := New(f, []string{"沙雕"}, 3, filepath.Join(t.TempDir(), "pool.json"))
+	f.NoStyle = true
+	if err := p.Refresh(context.Background()); err == nil {
+		t.Fatal("want the no-styled-device error")
+	}
+}

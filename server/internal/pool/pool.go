@@ -22,6 +22,9 @@ type Pool struct {
 	pages    int
 	file     string
 	retry    time.Duration // refresh interval while the pool is empty
+	// KeepWords admit a new show by title or description while upstream gives
+	// no style tags to check (see refreshUnstyled). Empty: nothing is admitted.
+	KeepWords []string
 
 	mu    sync.RWMutex
 	shows map[string]upstream.Show
@@ -112,6 +115,9 @@ func (p *Pool) Refresh(ctx context.Context) error {
 	}
 	p.mu.RUnlock()
 	shows, err := p.h.Shows(ctx, ids)
+	if errors.Is(err, upstream.ErrNoStyledDevice) && len(p.KeepWords) > 0 {
+		return p.refreshUnstyled(ctx, ids)
+	}
 	if err != nil {
 		return err
 	}
@@ -126,13 +132,61 @@ func (p *Pool) Refresh(ctx context.Context) error {
 		// a soft-limited device returns ids without details; never swap in an empty pool
 		return errors.New("upstream: refresh produced an empty pool")
 	}
-	p.replace(kept)
-	raw, _ := json.Marshal(kept)
+	return p.store(kept)
+}
+
+func (p *Pool) store(list []upstream.Show) error {
+	p.replace(list)
+	raw, _ := json.Marshal(list)
 	tmp := p.file + ".tmp"
 	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, p.file)
+}
+
+// named reports whether a show's title or description contains a keep word.
+func (p *Pool) named(s upstream.Show) bool {
+	for _, w := range p.KeepWords {
+		if w != "" && (strings.Contains(s.Title, w) || strings.Contains(s.Description, w)) {
+			return true
+		}
+	}
+	return false
+}
+
+// refreshUnstyled is Refresh for when upstream gives no style tags. Nothing
+// can be verified, so the pool is left as it is and only grows by shows that
+// name a keep word; they are re-checked once style tags are back.
+func (p *Pool) refreshUnstyled(ctx context.Context, ids []string) error {
+	p.mu.RLock()
+	list := make([]upstream.Show, 0, len(p.shows))
+	for _, s := range p.shows {
+		list = append(list, s)
+	}
+	var fresh []string
+	for _, id := range ids {
+		if _, ok := p.shows[id]; !ok {
+			fresh = append(fresh, id)
+		}
+	}
+	p.mu.RUnlock()
+	shows, err := p.h.ShowsUnstyled(ctx, fresh)
+	if err != nil {
+		return err
+	}
+	added := 0
+	for _, s := range shows {
+		if p.named(s) {
+			list = append(list, s)
+			added++
+		}
+	}
+	log.Printf("pool: no style tags upstream; %d new ids, %d resolved, %d added by keep words", len(fresh), len(shows), added)
+	if added == 0 {
+		return nil
+	}
+	return p.store(list)
 }
 
 // List returns one page (1-based) of the pool sorted by kind ("hot": heat,

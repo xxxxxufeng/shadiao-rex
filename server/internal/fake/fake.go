@@ -4,6 +4,7 @@ package fake
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/xxxxxufeng/shadiao-rex/server/internal/upstream"
@@ -17,6 +18,7 @@ type Hongguo struct {
 	Rel      map[string][]string
 	Plays    []*upstream.Play // returned in order by Resolve; last one repeats
 	Err      error            // when set, every call fails with it
+	NoStyle  bool             // Shows fails with upstream.ErrNoStyledDevice
 	Calls    int
 	Resolves int
 }
@@ -55,7 +57,17 @@ func (f *Hongguo) SearchComic(_ context.Context, q, cursor string) ([]string, st
 	return pages[i], next, nil
 }
 
-func (f *Hongguo) Shows(_ context.Context, ids []string) ([]upstream.Show, error) {
+func (f *Hongguo) Shows(ctx context.Context, ids []string) ([]upstream.Show, error) {
+	f.mu.Lock()
+	noStyle := f.NoStyle
+	f.mu.Unlock()
+	if noStyle {
+		return nil, fmt.Errorf("upstream: %w", upstream.ErrNoStyledDevice)
+	}
+	return f.ShowsUnstyled(ctx, ids)
+}
+
+func (f *Hongguo) ShowsUnstyled(_ context.Context, ids []string) ([]upstream.Show, error) {
 	if err := f.hit(); err != nil {
 		return nil, err
 	}

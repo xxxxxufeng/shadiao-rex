@@ -12,18 +12,21 @@ import (
 )
 
 type Config struct {
-	Listen       string   `json:"listen"`
-	Token        string   `json:"token"`
-	DataDir      string   `json:"-"`
-	PublicBase   string   `json:"publicBase"`
-	Keywords     []string `json:"keywords"`
+	Listen     string   `json:"listen"`
+	Token      string   `json:"token"`
+	DataDir    string   `json:"-"`
+	PublicBase string   `json:"publicBase"`
+	Keywords   []string `json:"keywords"`
+	// KeepWords: while Hongguo gives no style tags, new shows whose title or
+	// description contains one of these still join the pool.
+	KeepWords    []string `json:"keepWords"`
 	RefreshHours int      `json:"refreshHours"`
 	CacheMB      int      `json:"cacheMB"` // decrypted-episode disk cache; -1 disables
 	// ExtraTokens are more access tokens by name, each with its own history.
 	ExtraTokens map[string]string `json:"extraTokens,omitempty"`
 }
 
-var defaultKeywords = []string{"沙雕", "表情包", "沙雕动画", "搞笑", "无厘头", "爆笑", "穿越", "系统", "修仙", "逆袭", "规则怪谈", "诡异", "末世", "无限流", "游戏", "异能", "升级", "古代", "都市", "校园", "年代", "乡村", "直播", "求生", "玄幻", "重生", "神豪", "皇帝", "大明", "三国", "西游", "熊猫头", "怪谈", "宿舍", "猎人", "家族", "仙门", "师兄", "老六", "整活"}
+var defaultKeywords = []string{"沙雕", "表情包", "沙雕动画", "搞笑", "无厘头", "爆笑", "穿越", "系统", "修仙", "逆袭", "规则怪谈", "诡异", "末世", "无限流", "游戏", "异能", "升级", "古代", "都市", "校园", "年代", "乡村", "直播", "求生", "玄幻", "重生", "神豪", "皇帝", "大明", "三国", "西游", "熊猫头", "怪谈", "宿舍", "猎人", "家族", "仙门", "师兄", "老六", "整活", "虾仁", "虾仁沙雕", "熊猫头表情包"}
 
 // Load reads dir/config.json, writing a default one (with a fresh token) if absent.
 func Load(dir string) (*Config, error) {
@@ -49,6 +52,9 @@ func Load(dir string) (*Config, error) {
 	}
 	if len(c.Keywords) == 0 {
 		c.Keywords = append([]string(nil), defaultKeywords...)
+	}
+	if c.KeepWords == nil {
+		c.KeepWords = []string{"虾仁"}
 	}
 	if c.RefreshHours <= 0 {
 		c.RefreshHours = 6
